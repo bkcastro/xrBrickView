@@ -13,6 +13,7 @@
   },
   "dependencies": {
     "digitalbacon-ui": "^0.1.1",
-    "three": "^0.166.0"
+    "three": "^0.166.0",
+    "three-mesh-ui": "^6.5.4"
   }
 }

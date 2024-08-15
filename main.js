@@ -1,11 +1,12 @@
-import * as DigitalBaconUI from 'digitalbacon-ui';
 import * as THREE from 'three';
+import ThreeMeshUI from 'three-mesh-ui';
 
 import { GUI } from 'three/addons/libs/lil-gui.module.min.js';
 import Stats from 'three/examples/jsm/libs/stats.module.js';
 
-import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { OrbitControls } from 'three/examples/jsm/Addons.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+import VRControl from './utils/vrControls';
 
 import { LDrawLoader } from 'three/addons/loaders/LDrawLoader.js';
 import { LDrawUtils } from 'three/addons/utils/LDrawUtils.js';
@@ -16,9 +17,14 @@ import xrLegoMainUI from './scripts/xrLegoMainUI';
 
 let container, progressBarDiv;
 
-let camera, scene, renderer, controls, gui, guiData, stats;
+let camera, scene, renderer, controls, vrControl, gui, guiData, stats, model; 
 
-let model;
+
+// stuff to move the lego 
+let selectedObject; 
+let tempMatrix = new THREE.Matrix4();
+let moveOffset = new THREE.Vector3();
+let plane = new THREE.Plane();
 
 const ldrawPath = 'ldraw/officialLibrary/';
 
@@ -45,6 +51,40 @@ const modelFileList = {
   'Taipei': 'models/Taipei.mpd_Packed.mpd'
 };
 
+window.objsToTest = [];
+
+const raycaster = new THREE.Raycaster();
+
+const mouse = new THREE.Vector2();
+mouse.x = mouse.y = null;
+
+let selectState = false;
+
+window.addEventListener( 'pointermove', ( event ) => {
+	mouse.x = ( event.clientX / window.innerWidth ) * 2 - 1;
+	mouse.y = -( event.clientY / window.innerHeight ) * 2 + 1;
+} );
+
+window.addEventListener( 'pointerdown', () => {
+	selectState = true;
+} );
+
+window.addEventListener( 'pointerup', () => {
+	selectState = false;
+} );
+
+window.addEventListener( 'touchstart', ( event ) => {
+	selectState = true;
+	mouse.x = ( event.touches[ 0 ].clientX / window.innerWidth ) * 2 - 1;
+	mouse.y = -( event.touches[ 0 ].clientY / window.innerHeight ) * 2 + 1;
+} );
+
+window.addEventListener( 'touchend', () => {
+	selectState = false;
+	mouse.x = null;
+	mouse.y = null;
+} );
+
 init();
 
 async function init() {
@@ -57,15 +97,12 @@ async function init() {
   document.body.appendChild( container );
 
   camera = new THREE.PerspectiveCamera( 45, window.innerWidth / window.innerHeight, 0.1, 100 );
-  camera.position.set( 0, 2, 2 );
-  camera.lookAt(new THREE.Vector3(0 , 2 , 0));
+  camera.position.set( 0, 3, 4 );
 
   //
-
   renderer = new THREE.WebGLRenderer( { antialias: true } );
   renderer.setPixelRatio( window.devicePixelRatio );
   renderer.setSize( window.innerWidth, window.innerHeight );
-  renderer.setAnimationLoop( animate );
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   renderer.xr.enabled = true;
   container.appendChild( renderer.domElement );
@@ -84,16 +121,57 @@ async function init() {
 
   scene.add(new THREE.AxesHelper(1)); 
 
-  // Bacon UI
-
-  await DigitalBaconUI.init(container, renderer, scene, camera);
-  DigitalBaconUI.InputHandler.enableXRControllerManagement(scene);
+  // UI
 
   let mainUI = new xrLegoMainUI(); 
-  scene.add(mainUI.getObject());
+  scene.add(mainUI); 
 
-  // controls = new OrbitControls( camera, renderer.domElement );
-  // controls.enableDamping = true;
+  mainUI.position.set(-0.5, 1.5, -0.5);
+
+  controls = new OrbitControls( camera, renderer.domElement );
+  controls.enableDamping = true;
+
+  renderer.setAnimationLoop( animate );
+
+ 
+  ////////////////
+	// VR Controllers
+	////////////////
+
+	vrControl = VRControl( renderer, camera, scene );
+
+	scene.add( vrControl.controllerGrips[ 0 ], vrControl.controllers[ 0 ] );
+
+	vrControl.controllers[ 0 ].addEventListener( 'selectstart', (event) => {
+
+		selectState = true;
+
+    onSelectStart(vrControl.controllers[0]);
+
+	} );
+	vrControl.controllers[ 0 ].addEventListener( 'selectend', (event) => {
+
+		selectState = false;
+
+    onSelectEnd(vrControl.controllers[0]);
+
+	} );
+
+  scene.add( vrControl.controllerGrips[ 1 ], vrControl.controllers[ 1 ] );
+
+	vrControl.controllers[ 1 ].addEventListener( 'selectstart', (event) => {
+
+		selectState = true;
+    
+    onSelectStart(vrControl.controllers[1]);
+	} );
+	vrControl.controllers[ 1 ].addEventListener( 'selectend', (event) => {
+
+		selectState = false;
+
+    onSelectEnd(vrControl.controllers[1]);
+
+	} );
 
   //
 
@@ -107,6 +185,8 @@ async function init() {
     flatColors: false,
     mergeModel: false
   };
+
+  window.guiData = guiData;
 
   window.addEventListener( 'resize', onWindowResize );
 
@@ -154,6 +234,8 @@ function updateObjectsVisibility() {
 
 }
 
+window.updateObjectsVisibility = updateObjectsVisibility;
+
 function reloadObject( resetCamera ) {
 
   if ( model ) {
@@ -181,6 +263,8 @@ function reloadObject( resetCamera ) {
       }
 
       model = group2;
+
+      window.model = model;
 
       // demonstrate how to use convert to flat colors to better mimic the lego instructions look
       if ( guiData.flatColors ) {
@@ -228,27 +312,13 @@ function reloadObject( resetCamera ) {
       model.rotation.x = Math.PI;
       model.rotation.y = Math.PI / 2;
       model.scale.multiplyScalar(0.002);
-      model.position.set(0.5, 1.5, -0.8);
+      model.position.set(0.5, 1.2, -0.8);
 
       scene.add( model );
 
       guiData.buildingStep = model.userData.numBuildingSteps - 1;
 
       updateObjectsVisibility();
-
-      // Adjust camera and light
-
-      const bbox = new THREE.Box3().setFromObject( model );
-      const size = bbox.getSize( new THREE.Vector3() );
-      const radius = Math.max( size.x, Math.max( size.y, size.z ) ) * 0.5;
-
-      if ( resetCamera ) {
-
-        // controls.target0.copy( bbox.getCenter( new THREE.Vector3() ) );
-        // controls.position0.set( - 2.3, 1, 2 ).multiplyScalar( radius ).add( controls.target0 );
-        // controls.reset();
-
-      }
 
       createGUI();
 
@@ -257,6 +327,7 @@ function reloadObject( resetCamera ) {
     }, onProgress, onError );
 
 }
+window.reloadObject = reloadObject; 
 
 function onWindowResize() {
 
@@ -297,7 +368,12 @@ function createGUI() {
 
   if ( model.userData.numBuildingSteps > 1 ) {
 
-    gui.add( guiData, 'buildingStep', 0, model.userData.numBuildingSteps - 1 ).step( 1 ).name( 'Building step' ).onChange( updateObjectsVisibility );
+    //gui.add( guiData, 'buildingStep', 0, model.userData.numBuildingSteps - 1 ).step( 1 ).name( 'Building step' ).onChange( updateObjectsVisibility );
+    window.buildingStepControl = gui.add(guiData, 'buildingStep', 0, model.userData.numBuildingSteps - 1)
+.step(1)
+.name('Building step')
+.onChange(updateObjectsVisibility);
+
 
   } else {
 
@@ -319,23 +395,13 @@ function createGUI() {
 // 
 
 function animate(time, frame) {
-  stats.begin(); 
-
-  if (frame) {
-    DigitalBaconUI.update(frame);
-  }
-
-  //controls.update();
-  render();
-
+  stats.begin();
+  ThreeMeshUI.update(); 
+  controls.update(); 
+  renderer.render(scene, camera);
   stats.end();
 
-}
-
-function render() {
-
-  renderer.render( scene, camera );
-
+  updateButtons(); 
 }
 
 function onProgress( xhr ) {
@@ -374,5 +440,144 @@ function hideProgressBar() {
 function updateProgressBar( fraction ) {
 
   progressBarDiv.innerText = 'Loading... ' + Math.round( fraction * 100, 2 ) + '%';
+
+}
+
+function onSelectStart(controller) {
+
+  console.log("hi from onSelectStart", controller);
+
+  // const intersections = getIntersections(controller);
+
+  // if (intersections.length > 0) {
+
+  //   console.log("hit something");
+
+  //     const intersection = intersections[0];
+
+  //     selectedObject = intersection.object;
+
+  //     if (selectState.isUI) {return } // no nothing if this object is a ui obj
+      
+  //     // Highlight the object
+  //     selectedObject.material.emissive = new THREE.Color(0x555555);
+
+  //     // Plane setup for dragging
+  //     controller.matrixWorld.decompose(intersection.point, plane.normal, moveOffset);
+  //     plane.setFromNormalAndCoplanarPoint(
+  //         camera.getWorldDirection(plane.normal),
+  //         selectedObject.position
+  //     );
+
+  //     moveOffset.copy(intersection.point).sub(selectedObject.position);
+  //     controller.attach(selectedObject);
+  // }
+}
+
+function onSelectEnd(controller) {
+  if (selectedObject) {
+      // Remove highlight
+
+      console.log("onSelectEnd");
+      selectedObject.material.emissive = new THREE.Color(0x000000);
+      scene.attach(selectedObject);
+      selectedObject = null;
+  }
+}
+
+function getIntersections(controller) {
+  console.log("getIntersections"); 
+  tempMatrix.identity().extractRotation(controller.matrixWorld);
+  raycaster.ray.origin.setFromMatrixPosition(controller.matrixWorld);
+  raycaster.ray.direction.set(0, 0, -1).applyMatrix4(tempMatrix);
+
+  return raycaster.intersectObjects(scene.children, false);
+}
+
+// Called in the loop, get intersection with either the mouse or the VR controllers,
+// then update the buttons states according to result
+
+function updateButtons() {
+
+	// Find closest intersecting object
+
+	let intersect;
+
+	if ( renderer.xr.isPresenting ) {
+
+		vrControl.setFromController( 1, raycaster.ray );
+    // vrControl.setFromController( 1, raycaster.ray );
+
+		intersect = raycast();
+
+		// Position the little white dot at the end of the controller pointing ray
+		if ( intersect ) vrControl.setPointerAt( 1, intersect.point );
+
+	} else if ( mouse.x !== null && mouse.y !== null ) {
+
+		raycaster.setFromCamera( mouse, camera );
+
+		intersect = raycast();
+
+	}
+
+	// Update targeted button state (if any)
+
+	if ( intersect ) {
+
+    if (intersect.object.isUI) { // this is the UI
+      if ( selectState ) {
+
+        // Component.setState internally call component.set with the options you defined in component.setupState
+        intersect.object.setState( 'selected' );
+  
+      } else {
+  
+        // Component.setState internally call component.set with the options you defined in component.setupState
+        intersect.object.setState( 'hovered' );
+  
+      }
+    } else { // this is something else lego
+  
+    }
+
+	}
+
+	// Update non-targeted buttons state
+
+	window.objsToTest.forEach( ( obj ) => {
+
+		if ( ( !intersect || obj !== intersect.object ) && obj.isUI ) {
+
+			// Component.setState internally call component.set with the options you defined in component.setupState
+			obj.setState( 'idle' );
+
+		}
+
+	} );
+
+}
+
+//
+
+function raycast() {
+
+	return window.objsToTest.reduce( ( closestIntersection, obj ) => {
+
+		const intersection = raycaster.intersectObject( obj, true );
+
+		if ( !intersection[ 0 ] ) return closestIntersection;
+
+		if ( !closestIntersection || intersection[ 0 ].distance < closestIntersection.distance ) {
+
+			intersection[ 0 ].object = obj;
+
+			return intersection[ 0 ];
+
+		}
+
+		return closestIntersection;
+
+	}, null );
 
 }
