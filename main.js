@@ -5,6 +5,7 @@ import { GUI } from 'three/addons/libs/lil-gui.module.min.js';
 import Stats from 'three/examples/jsm/libs/stats.module.js';
 
 import { OrbitControls } from 'three/examples/jsm/Addons.js';
+import { TransformControls } from 'three/addons/controls/TransformControls.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import VRControl from './utils/vrControls';
 
@@ -14,10 +15,11 @@ import { LDrawUtils } from 'three/addons/utils/LDrawUtils.js';
 import { XRButton } from 'three/addons/webxr/XRButton.js';
 
 import xrLegoMainUI from './scripts/xrLegoMainUI';
+import { compressNormals } from 'three/examples/jsm/utils/GeometryCompressionUtils.js';
 
 let container, progressBarDiv;
 
-let camera, scene, renderer, controls, vrControl, gui, guiData, stats, model; 
+let camera, scene, renderer, controls, transformControls, vrControl, gui, guiData, stats, model, mainUI; 
 
 
 // stuff to move the lego 
@@ -44,11 +46,9 @@ const modelFileList = {
   'X-Wing': 'models/7140-1-X-wingFighter.mpd_Packed.mpd',
   'AT-ST': 'models/10174-1-ImperialAT-ST-UCS.mpd_Packed.mpd',
   'Pyramid': 'models/pyramid.mpd_Packed.mpd',
-  'Pyramid of Giza': 'models/Pyramid_of_Giza.mpd_Packed.mpd',
-  'Great Wall of China': 'models/Great_Wall_of_China.mpd_Packed.mpd', 
   'Mini Colosseum': 'models/Mini-Colosseum.mpd_Packed.mpd',
-  'Lady Liberty': 'models/Lady_Liberty.mpd_Packed.mpd',
-  'Taipei': 'models/Taipei.mpd_Packed.mpd'
+  'Taipei': 'models/Taipei.mpd_Packed.mpd', 
+  'London Bus': 'models/LondonBus.mpd_Packed.mpd',
 };
 
 window.objsToTest = [];
@@ -119,17 +119,22 @@ async function init() {
 
   // axes helper 
 
-  scene.add(new THREE.AxesHelper(1)); 
+  // scene.add(new THREE.AxesHelper(1)); 
 
   // UI
 
-  let mainUI = new xrLegoMainUI(); 
+  mainUI = new xrLegoMainUI(); 
   scene.add(mainUI); 
 
-  mainUI.position.set(-0.5, 1.5, -0.5);
+  mainUI.position.set(-0.65, 1.8, -0.65);
+
+  // controls
 
   controls = new OrbitControls( camera, renderer.domElement );
   controls.enableDamping = true;
+
+  transformControls = new TransformControls(camera, renderer.domElement); 
+  scene.add(transformControls); 
 
   renderer.setAnimationLoop( animate );
 
@@ -138,7 +143,7 @@ async function init() {
 	// VR Controllers
 	////////////////
 
-	vrControl = VRControl( renderer, camera, scene );
+	vrControl = VRControl( renderer );
 
 	scene.add( vrControl.controllerGrips[ 0 ], vrControl.controllers[ 0 ] );
 
@@ -146,14 +151,10 @@ async function init() {
 
 		selectState = true;
 
-    onSelectStart(vrControl.controllers[0]);
-
 	} );
 	vrControl.controllers[ 0 ].addEventListener( 'selectend', (event) => {
 
 		selectState = false;
-
-    onSelectEnd(vrControl.controllers[0]);
 
 	} );
 
@@ -162,21 +163,18 @@ async function init() {
 	vrControl.controllers[ 1 ].addEventListener( 'selectstart', (event) => {
 
 		selectState = true;
-    
-    onSelectStart(vrControl.controllers[1]);
+  
 	} );
 	vrControl.controllers[ 1 ].addEventListener( 'selectend', (event) => {
 
 		selectState = false;
-
-    onSelectEnd(vrControl.controllers[1]);
 
 	} );
 
   //
 
   guiData = {
-    modelFileName: modelFileList[ 'Car' ],
+    modelFileName: modelFileList[ 'London Bus' ],
     displayLines: true,
     conditionalLines: true,
     smoothNormals: true,
@@ -189,17 +187,6 @@ async function init() {
   window.guiData = guiData;
 
   window.addEventListener( 'resize', onWindowResize );
-
-  progressBarDiv = document.createElement( 'div' );
-  progressBarDiv.innerText = 'Loading...';
-  progressBarDiv.style.fontSize = '3em';
-  progressBarDiv.style.color = '#888';
-  progressBarDiv.style.display = 'block';
-  progressBarDiv.style.position = 'absolute';
-  progressBarDiv.style.top = '50%';
-  progressBarDiv.style.width = '100%';
-  progressBarDiv.style.textAlign = 'center';
-
 
   // load materials and then the model
 
@@ -236,7 +223,7 @@ function updateObjectsVisibility() {
 
 window.updateObjectsVisibility = updateObjectsVisibility;
 
-function reloadObject( resetCamera ) {
+async function reloadObject( resetCamera ) {
 
   if ( model ) {
 
@@ -245,9 +232,6 @@ function reloadObject( resetCamera ) {
   }
 
   model = null;
-
-  updateProgressBar( 0 );
-  showProgressBar();
 
   // only smooth when not rendering with flat colors to improve processing time
   const lDrawLoader = new LDrawLoader();
@@ -322,9 +306,7 @@ function reloadObject( resetCamera ) {
 
       createGUI();
 
-      hideProgressBar();
-
-    }, onProgress, onError );
+    }, () => {} , onError );
 
 }
 window.reloadObject = reloadObject; 
@@ -398,22 +380,61 @@ function animate(time, frame) {
   stats.begin();
   ThreeMeshUI.update(); 
   controls.update(); 
-  renderer.render(scene, camera);
-  stats.end();
+  mainUI.lookAt(camera.position);
 
-  updateButtons(); 
-}
-
-function onProgress( xhr ) {
-
-  if ( xhr.lengthComputable ) {
-
-    updateProgressBar( xhr.loaded / xhr.total );
-
-    console.log( Math.round( xhr.loaded / xhr.total * 100, 2 ) + '% downloaded' );
-
+  if (model) {
+   // model.rotation.y = Math.sin(time/6000) + Math.PI / 2;
   }
 
+  // ----------
+  // lego transfrom logic 
+  // -----------
+
+  const session = renderer.xr.getSession();
+
+  if (session) {
+      for (const source of session.inputSources) {
+
+          if (source.gamepad && model != null && source.profiles[0] != 'meta-fixed-hand') {
+         
+            const gamepad = source.gamepad;
+
+            // Handle joystick input
+            const xAxis = gamepad.axes[2]; 
+            const yAxis = gamepad.axes[3]; 
+
+            if ( source.handedness == 'right') { // right is for postions 
+              model.position.x += xAxis * 0.1;
+              model.position.z += yAxis * 0.1;
+
+              if (gamepad.buttons[5].pressed) {
+                model.position.y += 0.1; 
+              } 
+
+              if (gamepad.buttons[4].pressed) {
+                model.position.y -= 0.1; 
+              }
+
+            } else { // left is for rotation
+              model.rotation.x += xAxis * 0.1;
+              model.rotation.y += yAxis * 0.1;
+
+              if (gamepad.buttons[5].pressed) {
+                model.scale.multiplyScalar(1.1)
+              } 
+
+              if (gamepad.buttons[4].pressed) {
+                model.scale.multiplyScalar(0.9)
+              }
+            }
+          }
+      }
+  }
+
+  updateButtons(); 
+
+  renderer.render(scene, camera); 
+  stats.end();
 }
 
 function onError( error ) {
@@ -423,75 +444,6 @@ function onError( error ) {
   console.log( message );
   console.error( error );
 
-}
-
-function showProgressBar() {
-
-  document.body.appendChild( progressBarDiv );
-
-}
-
-function hideProgressBar() {
-
-  document.body.removeChild( progressBarDiv );
-
-}
-
-function updateProgressBar( fraction ) {
-
-  progressBarDiv.innerText = 'Loading... ' + Math.round( fraction * 100, 2 ) + '%';
-
-}
-
-function onSelectStart(controller) {
-
-  console.log("hi from onSelectStart", controller);
-
-  // const intersections = getIntersections(controller);
-
-  // if (intersections.length > 0) {
-
-  //   console.log("hit something");
-
-  //     const intersection = intersections[0];
-
-  //     selectedObject = intersection.object;
-
-  //     if (selectState.isUI) {return } // no nothing if this object is a ui obj
-      
-  //     // Highlight the object
-  //     selectedObject.material.emissive = new THREE.Color(0x555555);
-
-  //     // Plane setup for dragging
-  //     controller.matrixWorld.decompose(intersection.point, plane.normal, moveOffset);
-  //     plane.setFromNormalAndCoplanarPoint(
-  //         camera.getWorldDirection(plane.normal),
-  //         selectedObject.position
-  //     );
-
-  //     moveOffset.copy(intersection.point).sub(selectedObject.position);
-  //     controller.attach(selectedObject);
-  // }
-}
-
-function onSelectEnd(controller) {
-  if (selectedObject) {
-      // Remove highlight
-
-      console.log("onSelectEnd");
-      selectedObject.material.emissive = new THREE.Color(0x000000);
-      scene.attach(selectedObject);
-      selectedObject = null;
-  }
-}
-
-function getIntersections(controller) {
-  console.log("getIntersections"); 
-  tempMatrix.identity().extractRotation(controller.matrixWorld);
-  raycaster.ray.origin.setFromMatrixPosition(controller.matrixWorld);
-  raycaster.ray.direction.set(0, 0, -1).applyMatrix4(tempMatrix);
-
-  return raycaster.intersectObjects(scene.children, false);
 }
 
 // Called in the loop, get intersection with either the mouse or the VR controllers,
@@ -537,9 +489,7 @@ function updateButtons() {
         intersect.object.setState( 'hovered' );
   
       }
-    } else { // this is something else lego
-  
-    }
+    } 
 
 	}
 

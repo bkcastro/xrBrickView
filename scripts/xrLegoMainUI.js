@@ -1,21 +1,6 @@
 import ThreeMeshUI from 'three-mesh-ui';
 import * as THREE from 'three'; 
 
-// 'Car': 'images/Car.png',
-//     'Radar Truck': 'images/Radar Truck.png',
-//     'Trailer': 'images/Trailer.png',
-//     'Bulldozer': 'images/Bulldozer.png',
-//     'Helicopter': 'images/Helicopter.png',
-//     'X-Wing mini': 'images/X-Wing mini.png',
-//     'AT-ST mini': 'images/AT-ST mini.png',
-//     'AT-AT mini': 'images/AT-AT mini.png',
-//     'Shuttle': 'images/Shuttle.png',
-//     'TIE Interceptor': 'images/TIE Interceptor.png',
-//     'Star Fighter': 'images/Star Fighter.png',
-//     'X-Wing': 'images/X-Wing.png',
-//     'AT-ST': 'images/AT-ST.png'
-
-
 const selectedAttributes = {
   offset: 0.002,
   backgroundOpacity: 0.7,
@@ -42,7 +27,6 @@ const idleStateAttributes = {
       fontColor: new THREE.Color(0xffffff)
   },
 };
-
 
 const legoBuilds = [
   {
@@ -81,9 +65,19 @@ const legoBuilds = [
     file: 'models/30054-1-AT-ST-Mini.mpd_Packed.mpd',
   }, 
   {
-    name: 'AT-AT mini', 
-    image: 'images/AT-AT mini.png',
-    file: 'models/4489-1-AT-AT-Mini.mpd_Packed.mpd',
+    name: 'Mini Colosseum', 
+    image: 'images/Mini Colosseum.png', 
+    file: 'models/Mini-Colosseum.mpd_Packed.mpd', 
+  },
+  {
+    name: 'Taipei', 
+    image: 'images/Taipei.png', 
+    file: 'models/Taipei.mpd_Packed.mpd', 
+  },
+  {
+    name: 'London Bus', 
+    image: 'images/London Bus.png', 
+    file: 'models/LondonBus.mpd_Packed.mpd',
   }
 ];
 
@@ -114,6 +108,10 @@ export default class xrLegoMainUI extends THREE.Group {
     body.scale.multiplyScalar(1/3);
     this.add(body); 
   }
+
+  update(camera) {
+
+  }
 }
 
 function makeTitle(body) {
@@ -128,9 +126,9 @@ function makeTitle(body) {
   }); 
 
   titleContianer.set( {
-    borderRadius: [ 0, 0.1 + 0.1 * Math.sin( Date.now() / 500 ), 0, 0 ],
+    borderRadius: [ 0, 0.15, 0, 0 ],
     borderWidth: 0.01,
-    borderColor: new THREE.Color( 0.4 + 0.4 * Math.sin( Date.now() / 500 ), 0.5, 1 ),
+    borderColor: new THREE.Color( 0.4 + 0.4 * Math.sin( Date.now() / 20 ), 0.5, 1 ),
     borderOpacity: 1
   } );
 
@@ -211,6 +209,8 @@ function makeLegoViewer(body) {
                     if (window.guiData && window.reloadObject) {
                       window.guiData.modelFileName = legoBuilds[index].file; 
                       window.reloadObject(); 
+
+                      //count.set( { content: String( window.guiData.buildingStep + '/' + window.model.userData.numBuildingSteps-1 ) } );
                     }
                   }
               });
@@ -247,7 +247,7 @@ function makeLegoControler(body) {
   }); 
 
   container.set( {
-    borderRadius: [ 0, 0, 0, 0.1 + 0.1 * Math.cos( Date.now() / 500 ) ],
+    borderRadius: [ 0, 0, 0, 0.15],
     borderWidth: 0.01,
     borderColor: new THREE.Color( 0.4 + 0.4 * Math.sin( Date.now() / 500 ), 0.5, 1 ),
     borderOpacity: 1
@@ -256,7 +256,7 @@ function makeLegoControler(body) {
   //
 
   const countContainer = new ThreeMeshUI.Block({
-		width: 0.2,
+		width: 0.25,
 		height: 0.15,
 		justifyContent: 'center',
 		offset: 0.01,
@@ -265,24 +265,32 @@ function makeLegoControler(body) {
 	});
 
   const count = new ThreeMeshUI.Text( {
-    content: '?/?', 
-    fontSize: 0.08,
+    content: '7/7',  // default is car so just use that 
+    fontSize: 0.07,
     fontColor: new THREE.Color("white")
   } );
 
   // 
 
-  const buttonOptions = {
-		width: 0.3,
+  const buttonNext = new ThreeMeshUI.Block({
+		width: 0.28,
 		height: 0.15,
 		justifyContent: 'center',
 		offset: 0.05,
 		margin: 0.02,
-		borderRadius: 0.075
-	};
+		borderRadius: 0.075, 
+    backgroundColor: new THREE.Color(0xfa56fc)
+	});
 
-  const buttonNext = new ThreeMeshUI.Block( buttonOptions );
-	const buttonPrevious = new ThreeMeshUI.Block( buttonOptions );
+	const buttonPrevious = new ThreeMeshUI.Block({
+		width: 0.28,
+		height: 0.15,
+		justifyContent: 'center',
+		offset: 0.05,
+		margin: 0.02,
+		borderRadius: 0.075, 
+    backgroundColor: new THREE.Color(0x51db88)
+	});
 
 	// Add text to buttons
 
@@ -307,16 +315,12 @@ function makeLegoControler(body) {
 		state: 'selected',
 		attributes: selectedAttributes,
 		onSet: () => {
-      console.log("hi")
 
       if (window.model) {
         window.guiData.buildingStep = (window.guiData.buildingStep + 1) % window.model.userData.numBuildingSteps;
+        count.set( { content: String( window.guiData.buildingStep + '/' + (window.model.userData.numBuildingSteps-1) ) } );
         window.updateObjectsVisibility(); 
       }
-
-			// currentMesh = ( currentMesh + 1 ) % 3;
-			// showMesh( currentMesh );
-
 		}
 	} );
 
@@ -331,15 +335,10 @@ function makeLegoControler(body) {
 		onSet: () => {
 
       if (window.model && window.guiData.buildingStep > 0) {
-
         window.guiData.buildingStep = (window.guiData.buildingStep - 1) % window.model.userData.numBuildingSteps;
+        count.set( { content: String( window.guiData.buildingStep + '/' + (window.model.userData.numBuildingSteps-1) ) } );
         window.updateObjectsVisibility(); 
       }
-
-			// currentMesh -= 1;
-			// if ( currentMesh < 0 ) currentMesh = 2;
-			// showMesh( currentMesh );
-
 		}
 	} );
 

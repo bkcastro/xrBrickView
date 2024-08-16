@@ -130,7 +130,7 @@ export default function VRControl( renderer ) {
 
 	controllerGrips.forEach( ( controllerGrip ) => {
 
-		controllerGrip.add( controllerModelFactory.createControllerModel( controllerGrip ) );
+		//controllerGrip.add( controllerModelFactory.createControllerModel( controllerGrip ) );
 
 	} );
 
