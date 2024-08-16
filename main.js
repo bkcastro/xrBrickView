@@ -15,7 +15,6 @@ import { LDrawUtils } from 'three/addons/utils/LDrawUtils.js';
 import { XRButton } from 'three/addons/webxr/XRButton.js';
 
 import xrLegoMainUI from './scripts/xrLegoMainUI';
-import { compressNormals } from 'three/examples/jsm/utils/GeometryCompressionUtils.js';
 
 let container, progressBarDiv;
 
@@ -31,7 +30,6 @@ let plane = new THREE.Plane();
 const ldrawPath = 'officialLibrary/';
 
 const modelFileList = {
-  'Stonehenge': 'models/Stonehenge.mpd_Packed.mpd', 
   'Car': 'models/car.ldr_Packed.mpd',
   'Radar Truck': 'models/889-1-RadarTruck.mpd_Packed.mpd',
   'Trailer': 'models/4838-1-MiniVehicles.mpd_Packed.mpd',
@@ -97,7 +95,7 @@ async function init() {
   document.body.appendChild( container );
 
   camera = new THREE.PerspectiveCamera( 45, window.innerWidth / window.innerHeight, 0.1, 100 );
-  camera.position.set( 0, 3, 4 );
+  camera.position.set( 0, 2, 3 );
 
   //
   renderer = new THREE.WebGLRenderer( { antialias: true } );
@@ -187,6 +185,18 @@ async function init() {
   window.guiData = guiData;
 
   window.addEventListener( 'resize', onWindowResize );
+
+  // load materials and then the model
+
+  progressBarDiv = document.createElement( 'div' );
+  progressBarDiv.innerText = 'Loading...';
+  progressBarDiv.style.fontSize = '3em';
+  progressBarDiv.style.color = '#888';
+  progressBarDiv.style.display = 'block';
+  progressBarDiv.style.position = 'absolute';
+  progressBarDiv.style.top = '50%';
+  progressBarDiv.style.width = '100%';
+  progressBarDiv.style.textAlign = 'center';
 
   // load materials and then the model
 
@@ -437,6 +447,18 @@ function animate(time, frame) {
   stats.end();
 }
 
+function onProgress( xhr ) {
+
+  if ( xhr.lengthComputable ) {
+
+    updateProgressBar( xhr.loaded / xhr.total );
+
+    console.log( Math.round( xhr.loaded / xhr.total * 100, 2 ) + '% downloaded' );
+
+  }
+
+}
+
 function onError( error ) {
 
   const message = 'Error loading model';
@@ -446,6 +468,25 @@ function onError( error ) {
 
 }
 
+
+
+function showProgressBar() {
+
+  document.body.appendChild( progressBarDiv );
+
+}
+
+function hideProgressBar() {
+
+  document.body.removeChild( progressBarDiv );
+
+}
+
+function updateProgressBar( fraction ) {
+
+  progressBarDiv.innerText = 'Loading... ' + Math.round( fraction * 100, 2 ) + '%';
+
+}
 // Called in the loop, get intersection with either the mouse or the VR controllers,
 // then update the buttons states according to result
 
