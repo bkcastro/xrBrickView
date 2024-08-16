@@ -26,7 +26,7 @@ let tempMatrix = new THREE.Matrix4();
 let moveOffset = new THREE.Vector3();
 let plane = new THREE.Plane();
 
-const ldrawPath = 'ldraw/officialLibrary/';
+const ldrawPath = 'officialLibrary/';
 
 const modelFileList = {
   'Stonehenge': 'models/Stonehenge.mpd_Packed.mpd', 
