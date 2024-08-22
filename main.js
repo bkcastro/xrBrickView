@@ -7,7 +7,7 @@ import Stats from 'three/examples/jsm/libs/stats.module.js';
 import { OrbitControls } from 'three/examples/jsm/Addons.js';
 import { TransformControls } from 'three/addons/controls/TransformControls.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
-import VRControl from './utils/vrControls';
+import VRControl from './utils/VRControls.js';
 
 import { LDrawLoader } from 'three/addons/loaders/LDrawLoader.js';
 import { LDrawUtils } from 'three/addons/utils/LDrawUtils.js';
@@ -18,14 +18,7 @@ import xrLegoMainUI from './scripts/xrLegoMainUI';
 
 let container, progressBarDiv;
 
-let camera, scene, renderer, controls, transformControls, vrControl, gui, guiData, stats, model, mainUI; 
-
-
-// stuff to move the lego 
-let selectedObject; 
-let tempMatrix = new THREE.Matrix4();
-let moveOffset = new THREE.Vector3();
-let plane = new THREE.Plane();
+let camera, scene, renderer, controls, transformControls, vrControl, gui, guiData, stats, model, modelbbox, mainUI;
 
 const ldrawPath = 'officialLibrary/';
 
@@ -45,7 +38,7 @@ const modelFileList = {
   'AT-ST': 'models/10174-1-ImperialAT-ST-UCS.mpd_Packed.mpd',
   'Pyramid': 'models/pyramid.mpd_Packed.mpd',
   'Mini Colosseum': 'models/Mini-Colosseum.mpd_Packed.mpd',
-  'Taipei': 'models/Taipei.mpd_Packed.mpd', 
+  'Taipei': 'models/Taipei.mpd_Packed.mpd',
   'London Bus': 'models/LondonBus.mpd_Packed.mpd',
 };
 
@@ -58,30 +51,30 @@ mouse.x = mouse.y = null;
 
 let selectState = false;
 
-window.addEventListener( 'pointermove', ( event ) => {
-	mouse.x = ( event.clientX / window.innerWidth ) * 2 - 1;
-	mouse.y = -( event.clientY / window.innerHeight ) * 2 + 1;
-} );
+window.addEventListener('pointermove', (event) => {
+  mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+  mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+});
 
-window.addEventListener( 'pointerdown', () => {
-	selectState = true;
-} );
+window.addEventListener('pointerdown', () => {
+  selectState = true;
+});
 
-window.addEventListener( 'pointerup', () => {
-	selectState = false;
-} );
+window.addEventListener('pointerup', () => {
+  selectState = false;
+});
 
-window.addEventListener( 'touchstart', ( event ) => {
-	selectState = true;
-	mouse.x = ( event.touches[ 0 ].clientX / window.innerWidth ) * 2 - 1;
-	mouse.y = -( event.touches[ 0 ].clientY / window.innerHeight ) * 2 + 1;
-} );
+window.addEventListener('touchstart', (event) => {
+  selectState = true;
+  mouse.x = (event.touches[0].clientX / window.innerWidth) * 2 - 1;
+  mouse.y = -(event.touches[0].clientY / window.innerHeight) * 2 + 1;
+});
 
-window.addEventListener( 'touchend', () => {
-	selectState = false;
-	mouse.x = null;
-	mouse.y = null;
-} );
+window.addEventListener('touchend', () => {
+  selectState = false;
+  mouse.x = null;
+  mouse.y = null;
+});
 
 init();
 
@@ -92,28 +85,28 @@ async function init() {
   document.body.appendChild(stats.dom);
 
   const container = document.getElementById('container');
-  document.body.appendChild( container );
+  document.body.appendChild(container);
 
-  camera = new THREE.PerspectiveCamera( 45, window.innerWidth / window.innerHeight, 0.1, 100 );
-  camera.position.set( 0, 2, 3 );
+  camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 100);
+  camera.position.set(0, 0, 1);
 
   //
-  renderer = new THREE.WebGLRenderer( { antialias: true } );
-  renderer.setPixelRatio( window.devicePixelRatio );
-  renderer.setSize( window.innerWidth, window.innerHeight );
+  renderer = new THREE.WebGLRenderer({ antialias: true });
+  renderer.setPixelRatio(window.devicePixelRatio);
+  renderer.setSize(window.innerWidth, window.innerHeight);
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   renderer.xr.enabled = true;
-  container.appendChild( renderer.domElement );
+  container.appendChild(renderer.domElement);
 
   document.body.appendChild(XRButton.createButton(renderer));
 
   // scene
 
-  const pmremGenerator = new THREE.PMREMGenerator( renderer );
+  const pmremGenerator = new THREE.PMREMGenerator(renderer);
 
   scene = new THREE.Scene();
-  scene.background = new THREE.Color( 0xdeebed );
-  scene.environment = pmremGenerator.fromScene( new RoomEnvironment( renderer ) ).texture;
+  scene.background = new THREE.Color(0xdeebed);
+  scene.environment = pmremGenerator.fromScene(new RoomEnvironment(renderer)).texture;
 
   // axes helper 
 
@@ -121,58 +114,59 @@ async function init() {
 
   // UI
 
-  mainUI = new xrLegoMainUI(); 
-  scene.add(mainUI); 
+  mainUI = new xrLegoMainUI();
+  scene.add(mainUI);
 
-  mainUI.position.set(-0.65, 1.8, -0.65);
+  mainUI.position.set(-0.45, 0, .3);
+  //mainUI.position.set(-0.65, 1.8, -0.65);
 
   // controls
 
-  controls = new OrbitControls( camera, renderer.domElement );
+  controls = new OrbitControls(camera, renderer.domElement);
   controls.enableDamping = true;
 
-  transformControls = new TransformControls(camera, renderer.domElement); 
-  scene.add(transformControls); 
+  transformControls = new TransformControls(camera, renderer.domElement);
+  scene.add(transformControls);
 
-  renderer.setAnimationLoop( animate );
+  renderer.setAnimationLoop(animate);
 
- 
+
   ////////////////
-	// VR Controllers
-	////////////////
+  // VR Controllers
+  ////////////////
 
-	vrControl = VRControl( renderer );
+  vrControl = VRControl(renderer);
 
-	scene.add( vrControl.controllerGrips[ 0 ], vrControl.controllers[ 0 ] );
+  scene.add(vrControl.controllerGrips[0], vrControl.controllers[0]);
 
-	vrControl.controllers[ 0 ].addEventListener( 'selectstart', (event) => {
+  vrControl.controllers[0].addEventListener('selectstart', (event) => {
 
-		selectState = true;
+    selectState = true;
 
-	} );
-	vrControl.controllers[ 0 ].addEventListener( 'selectend', (event) => {
+  });
+  vrControl.controllers[0].addEventListener('selectend', (event) => {
 
-		selectState = false;
+    selectState = false;
 
-	} );
+  });
 
-  scene.add( vrControl.controllerGrips[ 1 ], vrControl.controllers[ 1 ] );
+  scene.add(vrControl.controllerGrips[1], vrControl.controllers[1]);
 
-	vrControl.controllers[ 1 ].addEventListener( 'selectstart', (event) => {
+  vrControl.controllers[1].addEventListener('selectstart', (event) => {
 
-		selectState = true;
-  
-	} );
-	vrControl.controllers[ 1 ].addEventListener( 'selectend', (event) => {
+    selectState = true;
 
-		selectState = false;
+  });
+  vrControl.controllers[1].addEventListener('selectend', (event) => {
 
-	} );
+    selectState = false;
+
+  });
 
   //
 
   guiData = {
-    modelFileName: modelFileList[ 'London Bus' ],
+    modelFileName: modelFileList['London Bus'],
     displayLines: true,
     conditionalLines: true,
     smoothNormals: true,
@@ -184,11 +178,11 @@ async function init() {
 
   window.guiData = guiData;
 
-  window.addEventListener( 'resize', onWindowResize );
+  window.addEventListener('resize', onWindowResize);
 
   // load materials and then the model
 
-  progressBarDiv = document.createElement( 'div' );
+  progressBarDiv = document.createElement('div');
   progressBarDiv.innerText = 'Loading...';
   progressBarDiv.style.fontSize = '3em';
   progressBarDiv.style.color = '#888';
@@ -200,17 +194,17 @@ async function init() {
 
   // load materials and then the model
 
-  reloadObject( true );
+  reloadObject(true);
 
 }
 
 function updateObjectsVisibility() {
 
-  model.traverse( c => {
+  model.traverse(c => {
 
-    if ( c.isLineSegments ) {
+    if (c.isLineSegments) {
 
-      if ( c.isConditionalLine ) {
+      if (c.isConditionalLine) {
 
         c.visible = guiData.conditionalLines;
 
@@ -220,39 +214,41 @@ function updateObjectsVisibility() {
 
       }
 
-    } else if ( c.isGroup ) {
+    } else if (c.isGroup) {
 
       // Hide objects with building step > gui setting
       c.visible = c.userData.buildingStep <= guiData.buildingStep;
 
     }
 
-  } );
+  });
 
 }
 
 window.updateObjectsVisibility = updateObjectsVisibility;
 
-async function reloadObject( resetCamera ) {
+async function reloadObject(resetCamera) {
 
-  if ( model ) {
+  if (model) {
 
-    scene.remove( model );
+    scene.remove(model);
+    scene.remove(modelbbox);
 
   }
 
   model = null;
+  modelbbox = null;
 
   // only smooth when not rendering with flat colors to improve processing time
   const lDrawLoader = new LDrawLoader();
-  lDrawLoader.smoothNormals = guiData.smoothNormals && ! guiData.flatColors;
+  lDrawLoader.smoothNormals = guiData.smoothNormals && !guiData.flatColors;
   lDrawLoader
-    .setPath( ldrawPath )
-    .load( guiData.modelFileName, function ( group2 ) {
+    .setPath(ldrawPath)
+    .load(guiData.modelFileName, function (group2) {
 
-      if ( model ) {
+      if (model) {
 
-        scene.remove( model );
+        scene.remove(model);
 
       }
 
@@ -261,12 +257,12 @@ async function reloadObject( resetCamera ) {
       window.model = model;
 
       // demonstrate how to use convert to flat colors to better mimic the lego instructions look
-      if ( guiData.flatColors ) {
+      if (guiData.flatColors) {
 
-        function convertMaterial( material ) {
+        function convertMaterial(material) {
 
           const newMaterial = new THREE.MeshBasicMaterial();
-          newMaterial.color.copy( material.color );
+          newMaterial.color.copy(material.color);
           newMaterial.polygonOffset = material.polygonOffset;
           newMaterial.polygonOffsetUnits = material.polygonOffsetUnits;
           newMaterial.polygonOffsetFactor = material.polygonOffsetFactor;
@@ -279,121 +275,79 @@ async function reloadObject( resetCamera ) {
 
         }
 
-        model.traverse( c => {
+        model.traverse(c => {
 
-          if ( c.isMesh ) {
+          if (c.isMesh) {
 
-            if ( Array.isArray( c.material ) ) {
+            if (Array.isArray(c.material)) {
 
-              c.material = c.material.map( convertMaterial );
+              c.material = c.material.map(convertMaterial);
 
             } else {
 
-              c.material = convertMaterial( c.material );
+              c.material = convertMaterial(c.material);
 
             }
 
           }
 
-        } );
+        });
 
       }
 
       // Merge model geometries by material
-      if ( guiData.mergeModel ) model = LDrawUtils.mergeObject( model );
+      if (guiData.mergeModel) model = LDrawUtils.mergeObject(model);
 
       // Convert from LDraw coordinates: rotate 180 degrees around OX
       model.rotation.x = Math.PI;
       model.rotation.y = Math.PI / 2;
       model.scale.multiplyScalar(0.002);
-      model.position.set(0.5, 1.2, -0.8);
+      model.position.set(0.65, -0.2, 0);
 
-      scene.add( model );
+      // Create a Box3 to hold the bounding box
+      const box = new THREE.Box3().setFromObject(model);
+
+      // Calculate the bounding box dimensions
+      const size = new THREE.Vector3();
+      box.getSize(size);
+      console.log('Bounding Box Dimensions:', size);
+
+      // Optionally, visualize the bounding box
+      const boxHelper = new THREE.BoxHelper(model, 0xff0000); // Red color for the bounding box
+      modelbbox = boxHelper;
+      scene.add(boxHelper);
+
+      scene.add(model);
 
       guiData.buildingStep = model.userData.numBuildingSteps - 1;
 
       updateObjectsVisibility();
 
-      createGUI();
+      // createGUI();
 
-    }, () => {} , onError );
+    }, () => { }, onError);
 
 }
-window.reloadObject = reloadObject; 
+window.reloadObject = reloadObject;
 
 function onWindowResize() {
 
   camera.aspect = window.innerWidth / window.innerHeight;
   camera.updateProjectionMatrix();
 
-  renderer.setSize( window.innerWidth, window.innerHeight );
+  renderer.setSize(window.innerWidth, window.innerHeight);
 
 }
-
-function createGUI() {
-
-  if ( gui ) {
-
-    gui.destroy();
-
-  }
-
-  gui = new GUI();
-
-  gui.add( guiData, 'modelFileName', modelFileList ).name( 'Model' ).onFinishChange( function () {
-
-    reloadObject( true );
-
-  } );
-
-  gui.add( guiData, 'flatColors' ).name( 'Flat Colors' ).onChange( function () {
-
-    reloadObject( false );
-
-  } );
-
-  gui.add( guiData, 'mergeModel' ).name( 'Merge model' ).onChange( function () {
-
-    reloadObject( false );
-
-  } );
-
-  if ( model.userData.numBuildingSteps > 1 ) {
-
-    //gui.add( guiData, 'buildingStep', 0, model.userData.numBuildingSteps - 1 ).step( 1 ).name( 'Building step' ).onChange( updateObjectsVisibility );
-    window.buildingStepControl = gui.add(guiData, 'buildingStep', 0, model.userData.numBuildingSteps - 1)
-.step(1)
-.name('Building step')
-.onChange(updateObjectsVisibility);
-
-
-  } else {
-
-    gui.add( guiData, 'noBuildingSteps' ).name( 'Building step' ).onChange( updateObjectsVisibility );
-
-  }
-
-  gui.add( guiData, 'smoothNormals' ).name( 'Smooth Normals' ).onChange( function changeNormals() {
-
-    reloadObject( false );
-
-  } );
-
-  gui.add( guiData, 'displayLines' ).name( 'Display Lines' ).onChange( updateObjectsVisibility );
-  gui.add( guiData, 'conditionalLines' ).name( 'Conditional Lines' ).onChange( updateObjectsVisibility );
-
-}
-
 // 
 
 function animate(time, frame) {
   stats.begin();
-  ThreeMeshUI.update(); 
-  controls.update(); 
+  ThreeMeshUI.update();
+  controls.update();
   mainUI.lookAt(camera.position);
 
   if (model) {
-   // model.rotation.y = Math.sin(time/6000) + Math.PI / 2;
+    // model.rotation.y = Math.sin(time/6000) + Math.PI / 2;
   }
 
   // ----------
@@ -403,68 +357,68 @@ function animate(time, frame) {
   const session = renderer.xr.getSession();
 
   if (session) {
-      for (const source of session.inputSources) {
+    for (const source of session.inputSources) {
 
-          if (source.gamepad && model != null && source.profiles[0] != 'meta-fixed-hand') {
-         
-            const gamepad = source.gamepad;
+      if (source.gamepad && model != null && source.profiles[0] != 'meta-fixed-hand') {
 
-            // Handle joystick input
-            const xAxis = gamepad.axes[2]; 
-            const yAxis = gamepad.axes[3]; 
+        const gamepad = source.gamepad;
 
-            if ( source.handedness == 'right') { // right is for postions 
-              model.position.x += xAxis * 0.1;
-              model.position.z += yAxis * 0.1;
+        // Handle joystick input
+        const xAxis = gamepad.axes[2];
+        const yAxis = gamepad.axes[3];
 
-              if (gamepad.buttons[5].pressed) {
-                model.position.y += 0.1; 
-              } 
+        if (source.handedness == 'right') { // right is for postions 
+          model.position.x += xAxis * 0.1;
+          model.position.z += yAxis * 0.1;
 
-              if (gamepad.buttons[4].pressed) {
-                model.position.y -= 0.1; 
-              }
-
-            } else { // left is for rotation
-              model.rotation.x += xAxis * 0.1;
-              model.rotation.y += yAxis * 0.1;
-
-              if (gamepad.buttons[5].pressed) {
-                model.scale.multiplyScalar(1.1)
-              } 
-
-              if (gamepad.buttons[4].pressed) {
-                model.scale.multiplyScalar(0.9)
-              }
-            }
+          if (gamepad.buttons[5].pressed) {
+            model.position.y += 0.1;
           }
+
+          if (gamepad.buttons[4].pressed) {
+            model.position.y -= 0.1;
+          }
+
+        } else { // left is for rotation
+          model.rotation.x += xAxis * 0.1;
+          model.rotation.y += yAxis * 0.1;
+
+          if (gamepad.buttons[5].pressed) {
+            model.scale.multiplyScalar(1.1)
+          }
+
+          if (gamepad.buttons[4].pressed) {
+            model.scale.multiplyScalar(0.9)
+          }
+        }
       }
+    }
   }
 
-  updateButtons(); 
+  updateButtons();
 
-  renderer.render(scene, camera); 
+  renderer.render(scene, camera);
   stats.end();
 }
 
-function onProgress( xhr ) {
+function onProgress(xhr) {
 
-  if ( xhr.lengthComputable ) {
+  if (xhr.lengthComputable) {
 
-    updateProgressBar( xhr.loaded / xhr.total );
+    updateProgressBar(xhr.loaded / xhr.total);
 
-    console.log( Math.round( xhr.loaded / xhr.total * 100, 2 ) + '% downloaded' );
+    console.log(Math.round(xhr.loaded / xhr.total * 100, 2) + '% downloaded');
 
   }
 
 }
 
-function onError( error ) {
+function onError(error) {
 
   const message = 'Error loading model';
   progressBarDiv.innerText = message;
-  console.log( message );
-  console.error( error );
+  console.log(message);
+  console.error(error);
 
 }
 
@@ -472,19 +426,19 @@ function onError( error ) {
 
 function showProgressBar() {
 
-  document.body.appendChild( progressBarDiv );
+  document.body.appendChild(progressBarDiv);
 
 }
 
 function hideProgressBar() {
 
-  document.body.removeChild( progressBarDiv );
+  document.body.removeChild(progressBarDiv);
 
 }
 
-function updateProgressBar( fraction ) {
+function updateProgressBar(fraction) {
 
-  progressBarDiv.innerText = 'Loading... ' + Math.round( fraction * 100, 2 ) + '%';
+  progressBarDiv.innerText = 'Loading... ' + Math.round(fraction * 100, 2) + '%';
 
 }
 // Called in the loop, get intersection with either the mouse or the VR controllers,
@@ -492,60 +446,60 @@ function updateProgressBar( fraction ) {
 
 function updateButtons() {
 
-	// Find closest intersecting object
+  // Find closest intersecting object
 
-	let intersect;
+  let intersect;
 
-	if ( renderer.xr.isPresenting ) {
+  if (renderer.xr.isPresenting) {
 
-		vrControl.setFromController( 1, raycaster.ray );
+    vrControl.setFromController(1, raycaster.ray);
     // vrControl.setFromController( 1, raycaster.ray );
 
-		intersect = raycast();
+    intersect = raycast();
 
-		// Position the little white dot at the end of the controller pointing ray
-		if ( intersect ) vrControl.setPointerAt( 1, intersect.point );
+    // Position the little white dot at the end of the controller pointing ray
+    if (intersect) vrControl.setPointerAt(1, intersect.point);
 
-	} else if ( mouse.x !== null && mouse.y !== null ) {
+  } else if (mouse.x !== null && mouse.y !== null) {
 
-		raycaster.setFromCamera( mouse, camera );
+    raycaster.setFromCamera(mouse, camera);
 
-		intersect = raycast();
+    intersect = raycast();
 
-	}
+  }
 
-	// Update targeted button state (if any)
+  // Update targeted button state (if any)
 
-	if ( intersect ) {
+  if (intersect) {
 
     if (intersect.object.isUI) { // this is the UI
-      if ( selectState ) {
+      if (selectState) {
 
         // Component.setState internally call component.set with the options you defined in component.setupState
-        intersect.object.setState( 'selected' );
-  
+        intersect.object.setState('selected');
+
       } else {
-  
+
         // Component.setState internally call component.set with the options you defined in component.setupState
-        intersect.object.setState( 'hovered' );
-  
+        intersect.object.setState('hovered');
+
       }
-    } 
+    }
 
-	}
+  }
 
-	// Update non-targeted buttons state
+  // Update non-targeted buttons state
 
-	window.objsToTest.forEach( ( obj ) => {
+  window.objsToTest.forEach((obj) => {
 
-		if ( ( !intersect || obj !== intersect.object ) && obj.isUI ) {
+    if ((!intersect || obj !== intersect.object) && obj.isUI) {
 
-			// Component.setState internally call component.set with the options you defined in component.setupState
-			obj.setState( 'idle' );
+      // Component.setState internally call component.set with the options you defined in component.setupState
+      obj.setState('idle');
 
-		}
+    }
 
-	} );
+  });
 
 }
 
@@ -553,22 +507,22 @@ function updateButtons() {
 
 function raycast() {
 
-	return window.objsToTest.reduce( ( closestIntersection, obj ) => {
+  return window.objsToTest.reduce((closestIntersection, obj) => {
 
-		const intersection = raycaster.intersectObject( obj, true );
+    const intersection = raycaster.intersectObject(obj, true);
 
-		if ( !intersection[ 0 ] ) return closestIntersection;
+    if (!intersection[0]) return closestIntersection;
 
-		if ( !closestIntersection || intersection[ 0 ].distance < closestIntersection.distance ) {
+    if (!closestIntersection || intersection[0].distance < closestIntersection.distance) {
 
-			intersection[ 0 ].object = obj;
+      intersection[0].object = obj;
 
-			return intersection[ 0 ];
+      return intersection[0];
 
-		}
+    }
 
-		return closestIntersection;
+    return closestIntersection;
 
-	}, null );
+  }, null);
 
 }
