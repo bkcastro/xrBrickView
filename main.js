@@ -1,11 +1,13 @@
-import * as DigitalBaconUI from 'digitalbacon-ui';
 import * as THREE from 'three';
+import ThreeMeshUI from 'three-mesh-ui';
 
 import { GUI } from 'three/addons/libs/lil-gui.module.min.js';
 import Stats from 'three/examples/jsm/libs/stats.module.js';
 
-import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { OrbitControls } from 'three/examples/jsm/Addons.js';
+import { TransformControls } from 'three/addons/controls/TransformControls.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+import VRControl from './utils/vrControls';
 
 import { LDrawLoader } from 'three/addons/loaders/LDrawLoader.js';
 import { LDrawUtils } from 'three/addons/utils/LDrawUtils.js';
@@ -16,14 +18,18 @@ import xrLegoMainUI from './scripts/xrLegoMainUI';
 
 let container, progressBarDiv;
 
-let camera, scene, renderer, controls, gui, guiData, stats;
+let camera, scene, renderer, controls, transformControls, vrControl, gui, guiData, stats, model, mainUI; 
 
-let model;
 
-const ldrawPath = 'ldraw/officialLibrary/';
+// stuff to move the lego 
+let selectedObject; 
+let tempMatrix = new THREE.Matrix4();
+let moveOffset = new THREE.Vector3();
+let plane = new THREE.Plane();
+
+const ldrawPath = 'officialLibrary/';
 
 const modelFileList = {
-  'Stonehenge': 'models/Stonehenge.mpd_Packed.mpd', 
   'Car': 'models/car.ldr_Packed.mpd',
   'Radar Truck': 'models/889-1-RadarTruck.mpd_Packed.mpd',
   'Trailer': 'models/4838-1-MiniVehicles.mpd_Packed.mpd',
@@ -38,12 +44,44 @@ const modelFileList = {
   'X-Wing': 'models/7140-1-X-wingFighter.mpd_Packed.mpd',
   'AT-ST': 'models/10174-1-ImperialAT-ST-UCS.mpd_Packed.mpd',
   'Pyramid': 'models/pyramid.mpd_Packed.mpd',
-  'Pyramid of Giza': 'models/Pyramid_of_Giza.mpd_Packed.mpd',
-  'Great Wall of China': 'models/Great_Wall_of_China.mpd_Packed.mpd', 
   'Mini Colosseum': 'models/Mini-Colosseum.mpd_Packed.mpd',
-  'Lady Liberty': 'models/Lady_Liberty.mpd_Packed.mpd',
-  'Taipei': 'models/Taipei.mpd_Packed.mpd'
+  'Taipei': 'models/Taipei.mpd_Packed.mpd', 
+  'London Bus': 'models/LondonBus.mpd_Packed.mpd',
 };
+
+window.objsToTest = [];
+
+const raycaster = new THREE.Raycaster();
+
+const mouse = new THREE.Vector2();
+mouse.x = mouse.y = null;
+
+let selectState = false;
+
+window.addEventListener( 'pointermove', ( event ) => {
+	mouse.x = ( event.clientX / window.innerWidth ) * 2 - 1;
+	mouse.y = -( event.clientY / window.innerHeight ) * 2 + 1;
+} );
+
+window.addEventListener( 'pointerdown', () => {
+	selectState = true;
+} );
+
+window.addEventListener( 'pointerup', () => {
+	selectState = false;
+} );
+
+window.addEventListener( 'touchstart', ( event ) => {
+	selectState = true;
+	mouse.x = ( event.touches[ 0 ].clientX / window.innerWidth ) * 2 - 1;
+	mouse.y = -( event.touches[ 0 ].clientY / window.innerHeight ) * 2 + 1;
+} );
+
+window.addEventListener( 'touchend', () => {
+	selectState = false;
+	mouse.x = null;
+	mouse.y = null;
+} );
 
 init();
 
@@ -57,15 +95,12 @@ async function init() {
   document.body.appendChild( container );
 
   camera = new THREE.PerspectiveCamera( 45, window.innerWidth / window.innerHeight, 0.1, 100 );
-  camera.position.set( 0, 2, 2 );
-  camera.lookAt(new THREE.Vector3(0 , 2 , 0));
+  camera.position.set( 0, 2, 3 );
 
   //
-
   renderer = new THREE.WebGLRenderer( { antialias: true } );
   renderer.setPixelRatio( window.devicePixelRatio );
   renderer.setSize( window.innerWidth, window.innerHeight );
-  renderer.setAnimationLoop( animate );
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   renderer.xr.enabled = true;
   container.appendChild( renderer.domElement );
@@ -82,23 +117,62 @@ async function init() {
 
   // axes helper 
 
-  scene.add(new THREE.AxesHelper(1)); 
+  // scene.add(new THREE.AxesHelper(1)); 
 
-  // Bacon UI
+  // UI
 
-  await DigitalBaconUI.init(container, renderer, scene, camera);
-  DigitalBaconUI.InputHandler.enableXRControllerManagement(scene);
+  mainUI = new xrLegoMainUI(); 
+  scene.add(mainUI); 
 
-  let mainUI = new xrLegoMainUI(); 
-  scene.add(mainUI.getObject());
+  mainUI.position.set(-0.65, 1.8, -0.65);
 
-  // controls = new OrbitControls( camera, renderer.domElement );
-  // controls.enableDamping = true;
+  // controls
+
+  controls = new OrbitControls( camera, renderer.domElement );
+  controls.enableDamping = true;
+
+  transformControls = new TransformControls(camera, renderer.domElement); 
+  scene.add(transformControls); 
+
+  renderer.setAnimationLoop( animate );
+
+ 
+  ////////////////
+	// VR Controllers
+	////////////////
+
+	vrControl = VRControl( renderer );
+
+	scene.add( vrControl.controllerGrips[ 0 ], vrControl.controllers[ 0 ] );
+
+	vrControl.controllers[ 0 ].addEventListener( 'selectstart', (event) => {
+
+		selectState = true;
+
+	} );
+	vrControl.controllers[ 0 ].addEventListener( 'selectend', (event) => {
+
+		selectState = false;
+
+	} );
+
+  scene.add( vrControl.controllerGrips[ 1 ], vrControl.controllers[ 1 ] );
+
+	vrControl.controllers[ 1 ].addEventListener( 'selectstart', (event) => {
+
+		selectState = true;
+  
+	} );
+	vrControl.controllers[ 1 ].addEventListener( 'selectend', (event) => {
+
+		selectState = false;
+
+	} );
 
   //
 
   guiData = {
-    modelFileName: modelFileList[ 'Car' ],
+    modelFileName: modelFileList[ 'London Bus' ],
     displayLines: true,
     conditionalLines: true,
     smoothNormals: true,
@@ -108,7 +182,11 @@ async function init() {
     mergeModel: false
   };
 
+  window.guiData = guiData;
+
   window.addEventListener( 'resize', onWindowResize );
+
+  // load materials and then the model
 
   progressBarDiv = document.createElement( 'div' );
   progressBarDiv.innerText = 'Loading...';
@@ -119,7 +197,6 @@ async function init() {
   progressBarDiv.style.top = '50%';
   progressBarDiv.style.width = '100%';
   progressBarDiv.style.textAlign = 'center';
-
 
   // load materials and then the model
 
@@ -154,7 +231,9 @@ function updateObjectsVisibility() {
 
 }
 
-function reloadObject( resetCamera ) {
+window.updateObjectsVisibility = updateObjectsVisibility;
+
+async function reloadObject( resetCamera ) {
 
   if ( model ) {
 
@@ -163,9 +242,6 @@ function reloadObject( resetCamera ) {
   }
 
   model = null;
-
-  updateProgressBar( 0 );
-  showProgressBar();
 
   // only smooth when not rendering with flat colors to improve processing time
   const lDrawLoader = new LDrawLoader();
@@ -181,6 +257,8 @@ function reloadObject( resetCamera ) {
       }
 
       model = group2;
+
+      window.model = model;
 
       // demonstrate how to use convert to flat colors to better mimic the lego instructions look
       if ( guiData.flatColors ) {
@@ -228,7 +306,7 @@ function reloadObject( resetCamera ) {
       model.rotation.x = Math.PI;
       model.rotation.y = Math.PI / 2;
       model.scale.multiplyScalar(0.002);
-      model.position.set(0.5, 1.5, -0.8);
+      model.position.set(0.5, 1.2, -0.8);
 
       scene.add( model );
 
@@ -236,27 +314,12 @@ function reloadObject( resetCamera ) {
 
       updateObjectsVisibility();
 
-      // Adjust camera and light
-
-      const bbox = new THREE.Box3().setFromObject( model );
-      const size = bbox.getSize( new THREE.Vector3() );
-      const radius = Math.max( size.x, Math.max( size.y, size.z ) ) * 0.5;
-
-      if ( resetCamera ) {
-
-        // controls.target0.copy( bbox.getCenter( new THREE.Vector3() ) );
-        // controls.position0.set( - 2.3, 1, 2 ).multiplyScalar( radius ).add( controls.target0 );
-        // controls.reset();
-
-      }
-
       createGUI();
 
-      hideProgressBar();
-
-    }, onProgress, onError );
+    }, () => {} , onError );
 
 }
+window.reloadObject = reloadObject; 
 
 function onWindowResize() {
 
@@ -297,7 +360,12 @@ function createGUI() {
 
   if ( model.userData.numBuildingSteps > 1 ) {
 
-    gui.add( guiData, 'buildingStep', 0, model.userData.numBuildingSteps - 1 ).step( 1 ).name( 'Building step' ).onChange( updateObjectsVisibility );
+    //gui.add( guiData, 'buildingStep', 0, model.userData.numBuildingSteps - 1 ).step( 1 ).name( 'Building step' ).onChange( updateObjectsVisibility );
+    window.buildingStepControl = gui.add(guiData, 'buildingStep', 0, model.userData.numBuildingSteps - 1)
+.step(1)
+.name('Building step')
+.onChange(updateObjectsVisibility);
+
 
   } else {
 
@@ -319,23 +387,64 @@ function createGUI() {
 // 
 
 function animate(time, frame) {
-  stats.begin(); 
+  stats.begin();
+  ThreeMeshUI.update(); 
+  controls.update(); 
+  mainUI.lookAt(camera.position);
 
-  if (frame) {
-    DigitalBaconUI.update(frame);
+  if (model) {
+   // model.rotation.y = Math.sin(time/6000) + Math.PI / 2;
   }
 
-  //controls.update();
-  render();
+  // ----------
+  // lego transfrom logic 
+  // -----------
 
+  const session = renderer.xr.getSession();
+
+  if (session) {
+      for (const source of session.inputSources) {
+
+          if (source.gamepad && model != null && source.profiles[0] != 'meta-fixed-hand') {
+         
+            const gamepad = source.gamepad;
+
+            // Handle joystick input
+            const xAxis = gamepad.axes[2]; 
+            const yAxis = gamepad.axes[3]; 
+
+            if ( source.handedness == 'right') { // right is for postions 
+              model.position.x += xAxis * 0.1;
+              model.position.z += yAxis * 0.1;
+
+              if (gamepad.buttons[5].pressed) {
+                model.position.y += 0.1; 
+              } 
+
+              if (gamepad.buttons[4].pressed) {
+                model.position.y -= 0.1; 
+              }
+
+            } else { // left is for rotation
+              model.rotation.x += xAxis * 0.1;
+              model.rotation.y += yAxis * 0.1;
+
+              if (gamepad.buttons[5].pressed) {
+                model.scale.multiplyScalar(1.1)
+              } 
+
+              if (gamepad.buttons[4].pressed) {
+                model.scale.multiplyScalar(0.9)
+              }
+            }
+          }
+      }
+  }
+
+  updateButtons(); 
+
+  renderer.render(scene, camera); 
   stats.end();
-
-}
-
-function render() {
-
-  renderer.render( scene, camera );
-
 }
 
 function onProgress( xhr ) {
@@ -359,6 +468,8 @@ function onError( error ) {
 
 }
 
+
+
 function showProgressBar() {
 
   document.body.appendChild( progressBarDiv );
@@ -374,5 +485,90 @@ function hideProgressBar() {
 function updateProgressBar( fraction ) {
 
   progressBarDiv.innerText = 'Loading... ' + Math.round( fraction * 100, 2 ) + '%';
+
+}
+// Called in the loop, get intersection with either the mouse or the VR controllers,
+// then update the buttons states according to result
+
+function updateButtons() {
+
+	// Find closest intersecting object
+
+	let intersect;
+
+	if ( renderer.xr.isPresenting ) {
+
+		vrControl.setFromController( 1, raycaster.ray );
+    // vrControl.setFromController( 1, raycaster.ray );
+
+		intersect = raycast();
+
+		// Position the little white dot at the end of the controller pointing ray
+		if ( intersect ) vrControl.setPointerAt( 1, intersect.point );
+
+	} else if ( mouse.x !== null && mouse.y !== null ) {
+
+		raycaster.setFromCamera( mouse, camera );
+
+		intersect = raycast();
+
+	}
+
+	// Update targeted button state (if any)
+
+	if ( intersect ) {
+
+    if (intersect.object.isUI) { // this is the UI
+      if ( selectState ) {
+
+        // Component.setState internally call component.set with the options you defined in component.setupState
+        intersect.object.setState( 'selected' );
+  
+      } else {
+  
+        // Component.setState internally call component.set with the options you defined in component.setupState
+        intersect.object.setState( 'hovered' );
+  
+      }
+    } 
+
+	}
+
+	// Update non-targeted buttons state
+
+	window.objsToTest.forEach( ( obj ) => {
+
+		if ( ( !intersect || obj !== intersect.object ) && obj.isUI ) {
+
+			// Component.setState internally call component.set with the options you defined in component.setupState
+			obj.setState( 'idle' );
+
+		}
+
+	} );
+
+}
+
+//
+
+function raycast() {
+
+	return window.objsToTest.reduce( ( closestIntersection, obj ) => {
+
+		const intersection = raycaster.intersectObject( obj, true );
+
+		if ( !intersection[ 0 ] ) return closestIntersection;
+
+		if ( !closestIntersection || intersection[ 0 ].distance < closestIntersection.distance ) {
+
+			intersection[ 0 ].object = obj;
+
+			return intersection[ 0 ];
+
+		}
+
+		return closestIntersection;
+
+	}, null );
 
 }
