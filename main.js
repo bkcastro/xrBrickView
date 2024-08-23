@@ -20,6 +20,8 @@ let container, progressBarDiv;
 
 let camera, scene, renderer, controls, transformControls, vrControl, gui, guiData, stats, model, modelbbox, mainUI;
 
+const raycast1ObjectsToTest = new THREE.Group();
+
 const ldrawPath = 'officialLibrary/';
 
 const modelFileList = {
@@ -50,6 +52,9 @@ const mouse = new THREE.Vector2();
 mouse.x = mouse.y = null;
 
 let selectState = false;
+let dragging = false;
+
+// this is the hover feature with mouse input 
 
 window.addEventListener('pointermove', (event) => {
   mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
@@ -57,11 +62,29 @@ window.addEventListener('pointermove', (event) => {
 });
 
 window.addEventListener('pointerdown', () => {
+  console.log("pointerdown");
+
   selectState = true;
+
+  if (raycaster == null) { return }
+
+  let intersects = raycast1();
+
+  console.log('intersects', intersects);
+  console.log('dragging', dragging);
+
 });
 
 window.addEventListener('pointerup', () => {
+
+  console.log("pointerup");
+
   selectState = false;
+
+  console.log('dragging', dragging);
+
+  dragging = false
+
 });
 
 window.addEventListener('touchstart', (event) => {
@@ -118,6 +141,11 @@ async function init() {
   scene.add(mainUI);
 
   mainUI.position.set(-0.45, 0, .3);
+
+  raycast1ObjectsToTest.add(mainUI);
+
+  scene.add(raycast1ObjectsToTest);
+
   //mainUI.position.set(-0.65, 1.8, -0.65);
 
   // controls
@@ -125,8 +153,8 @@ async function init() {
   controls = new OrbitControls(camera, renderer.domElement);
   controls.enableDamping = true;
 
-  transformControls = new TransformControls(camera, renderer.domElement);
-  scene.add(transformControls);
+  // transformControls = new TransformControls(camera, renderer.domElement);
+  // scene.add(transformControls);
 
   renderer.setAnimationLoop(animate);
 
@@ -142,7 +170,6 @@ async function init() {
   vrControl.controllers[0].addEventListener('selectstart', (event) => {
 
     selectState = true;
-
   });
   vrControl.controllers[0].addEventListener('selectend', (event) => {
 
@@ -341,6 +368,7 @@ function onWindowResize() {
 // 
 
 function animate(time, frame) {
+
   stats.begin();
   ThreeMeshUI.update();
   controls.update();
@@ -422,8 +450,6 @@ function onError(error) {
 
 }
 
-
-
 function showProgressBar() {
 
   document.body.appendChild(progressBarDiv);
@@ -441,6 +467,7 @@ function updateProgressBar(fraction) {
   progressBarDiv.innerText = 'Loading... ' + Math.round(fraction * 100, 2) + '%';
 
 }
+
 // Called in the loop, get intersection with either the mouse or the VR controllers,
 // then update the buttons states according to result
 
@@ -450,30 +477,42 @@ function updateButtons() {
 
   let intersect;
 
+  // --------
+  // XR INPUT 
+  // -------- 
+
   if (renderer.xr.isPresenting) {
 
     vrControl.setFromController(1, raycaster.ray);
     // vrControl.setFromController( 1, raycaster.ray );
 
-    intersect = raycast();
+    intersect = raycast2();
 
     // Position the little white dot at the end of the controller pointing ray
     if (intersect) vrControl.setPointerAt(1, intersect.point);
 
-  } else if (mouse.x !== null && mouse.y !== null) {
+  }
+
+  // -----------
+  // MOUSE INPUT
+  // -----------
+
+  else if (mouse.x !== null && mouse.y !== null) {
 
     raycaster.setFromCamera(mouse, camera);
 
-    intersect = raycast();
+    intersect = raycast2();
 
   }
 
   // Update targeted button state (if any)
 
+
+
   if (intersect) {
 
     if (intersect.object.isUI) { // this is the UI
-      if (selectState) {
+      if (selectState && !dragging) {
 
         // Component.setState internally call component.set with the options you defined in component.setupState
         intersect.object.setState('selected');
@@ -503,13 +542,42 @@ function updateButtons() {
 
 }
 
-//
+// ad-hoc when dragging you don't want to call the newly intersected options because you are trying to just drag around the scene. 
+// by checking once on down check if you intersect with any
 
-function raycast() {
+// this gets called on pointer down event 
+
+function raycast1() {
+  console.log('raycast1 543')
+
+  raycaster.setFromCamera(mouse, camera);
+
+  // Calculate objects intersecting the ray
+  const intersections = raycaster.intersectObjects(raycast1ObjectsToTest.children);
+
+  console.log('raycast1 | intersections', intersections);
+
+  if (intersections.length == 0) {
+
+    dragging = true;
+
+  }
+
+}
+
+// reduce is cool 
+
+// call this always handles mouse and xr input for interactions 
+
+function raycast2() {
 
   return window.objsToTest.reduce((closestIntersection, obj) => {
 
     const intersection = raycaster.intersectObject(obj, true);
+
+    // if (intersection.length > 0) {
+    //   console.log('intersections', intersection);
+    // } 
 
     if (!intersection[0]) return closestIntersection;
 
@@ -526,3 +594,5 @@ function raycast() {
   }, null);
 
 }
+
+
