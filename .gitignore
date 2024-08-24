@@ -24,3 +24,6 @@ dist-ssr
 *.sw?
 
 ldraw
+
+localhost-key.pem
+localhost.pem
