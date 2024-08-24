@@ -25,5 +25,4 @@ dist-ssr
 
 ldraw
 
-localhost-key.pem
-localhost.pem
+*.pem
