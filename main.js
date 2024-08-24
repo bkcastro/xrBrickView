@@ -370,6 +370,7 @@ function onWindowResize() {
 function animate(time, frame) {
 
   stats.begin();
+
   ThreeMeshUI.update();
   controls.update();
   mainUI.lookAt(camera.position);
@@ -378,9 +379,9 @@ function animate(time, frame) {
     // model.rotation.y = Math.sin(time/6000) + Math.PI / 2;
   }
 
-  // ----------
+  // -------------------
   // lego transfrom logic 
-  // -----------
+  // --------------------
 
   const session = renderer.xr.getSession();
 
@@ -395,7 +396,7 @@ function animate(time, frame) {
         const xAxis = gamepad.axes[2];
         const yAxis = gamepad.axes[3];
 
-        if (source.handedness == 'right') { // right is for postions 
+        if (source.handedness == 'right') { // right is for positions 
           model.position.x += xAxis * 0.1;
           model.position.z += yAxis * 0.1;
 
@@ -507,8 +508,6 @@ function updateButtons() {
 
   // Update targeted button state (if any)
 
-
-
   if (intersect) {
 
     if (intersect.object.isUI) { // this is the UI
@@ -548,14 +547,11 @@ function updateButtons() {
 // this gets called on pointer down event 
 
 function raycast1() {
-  console.log('raycast1 543')
 
   raycaster.setFromCamera(mouse, camera);
 
   // Calculate objects intersecting the ray
   const intersections = raycaster.intersectObjects(raycast1ObjectsToTest.children);
-
-  console.log('raycast1 | intersections', intersections);
 
   if (intersections.length == 0) {
 
@@ -567,17 +563,13 @@ function raycast1() {
 
 // reduce is cool 
 
-// call this always handles mouse and xr input for interactions 
+// call this always, handles mouse and xr input for interactions 
 
 function raycast2() {
 
   return window.objsToTest.reduce((closestIntersection, obj) => {
 
     const intersection = raycaster.intersectObject(obj, true);
-
-    // if (intersection.length > 0) {
-    //   console.log('intersections', intersection);
-    // } 
 
     if (!intersection[0]) return closestIntersection;
 
